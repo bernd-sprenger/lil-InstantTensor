@@ -904,6 +904,17 @@ class safe_open:
                 f"budget ({self._device_memory_budget} B)"
             )
 
+    def _determine_buffer_size(self, buffer_size):
+        # 0.1.9 API kept for Local Inference Lab's vLLM: its index-aware loading
+        # rewrites filename/tensor_offsets/tensor_sizes to the selected tensors,
+        # then calls this. Those lists hold only kept tensors, so the per-tensor
+        # tensor_keep mask (built for the unfiltered lists) is dropped: empty
+        # means keep all.
+        self.tensor_keep = []
+        if buffer_size is None:
+            buffer_size = env_buffer_size()
+        self._finalize_buffer_size(buffer_size)
+
     def _read_metadata(self):
         meta_read_threads = []
         meta_read_results = [None] * len(self.filename)
