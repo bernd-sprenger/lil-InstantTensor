@@ -673,6 +673,10 @@ class safe_open:
         self.tensor_sizes = [v["data_offsets"][1] - v["data_offsets"][0] for k, v in self.ordered_tensor_metadatas]
         self.total_tensor_size = sum(self.tensor_sizes)
 
+        # With load_now=False a caller may still narrow the tensor lists (LIL's
+        # vLLM does, then calls _determine_buffer_size), so the device memory
+        # budget is checked when the loader opens, against the final buffer.
+        self._load_now = load_now
         self._finalize_buffer_size(config.buffer_size)
 
         if not self.copy and (tensor_filter is not None or self.buffer_size < self.total_tensor_size):
@@ -898,6 +902,10 @@ class safe_open:
                 )
                 self.buffer_size = max_buffer_size
 
+        if self._load_now:
+            self._check_device_memory_budget()
+
+    def _check_device_memory_budget(self):
         if self.buffer_size > self._device_memory_budget:
             raise RuntimeError(
                 f"buffer_size ({self.buffer_size} B) exceeds device memory "
@@ -954,6 +962,7 @@ class safe_open:
         return meta_read_results
 
     def _open(self):
+        self._check_device_memory_budget()
         self.open_time = time.perf_counter()
         nccl_communicator = self.process_group._get_backend(self.device)._comm_ptr() if self.process_group is not None else 0
         self.loader_handle = _C.open(
